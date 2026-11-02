@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Menu - SNU Dining</title>
+    <style>
+        /* Modal (Pop-up) Styles */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
+        .history-card { border-bottom: 1px solid #eee; padding: 10px 0; }
+        .history-card:last-child { border-bottom: none; }
+        .history-date { font-size: 12px; color: #777; }
+        .history-items { font-weight: bold; margin: 5px 0; }
+        .history-total { color: #d9534f; font-weight: bold; }
+        .close-btn { background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; float: right; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; background-color: #0056b3; color: white; padding: 15px 30px; border-radius: 8px; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+        .header h1 { margin: 0; font-size: 24px; }
+
+        /* Styling the new dropdown */
+        .dh-selector { padding: 10px; font-size: 16px; border-radius: 5px; border: none; outline: none; cursor: pointer; font-weight: bold; color: #0056b3; }
+
+        .cart-status { font-weight: bold; background-color: #ff9800; padding: 8px 15px; border-radius: 5px; }
+        .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+        .food-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: center; display: flex; flex-direction: column; justify-content: space-between;}
+        .food-card h3 { margin: 0 0 10px 0; color: #333; }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-bottom: 10px; }
+        .badge.veg { background-color: #d4edda; color: #155724; }
+        .badge.non-veg { background-color: #f8d7da; color: #721c24; }
+        .price { font-size: 20px; font-weight: bold; color: #0056b3; margin: 15px 0; }
+        button.add-btn { background-color: #28a745; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; transition: 0.2s; }
+        button.add-btn:hover { background-color: #218838; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 id="pageTitle">🍽️ SNU Live Menu</h1>
+
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <select id="dhSelect" class="dh-selector" onchange="fetchMenu()">
+                <option value="1">DH-1 (Cluster 2)</option>
+                <option value="2">DH-2 (Cluster 3)</option>
+                <option value="3">DH-3 (Cluster 4)</option>
+            </select>
+
+            <div id="crowdBadge" style="padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; background-color: #e9ecef; color: #333; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                ⚪ Calculating Traffic...
+            </div>
+        </div>
+
+        <div style="text-align: right;">
+            <div style="font-size: 14px; margin-bottom: 5px;">Welcome, <span id="studentNameDisplay">Student</span>!</div>
+            <div style="font-weight: bold; color: #ffeb3b;">Wallet: ₹<span id="walletBalanceDisplay">0.00</span></div>
+        </div>
+
+        <div class="cart-status">
+            Cart: <span id="cartCount">0</span> items | ₹<span id="cartTotal">0.00</span>
+
+            <button onclick="clearCart()" style="margin-left:15px; background-color:#dc3545; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">🗑️ Clear</button>
+
+            <button onclick="processCheckout()" style="margin-left:5px; background-color:#28a745; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">Checkout</button>
+        </div>
+        <div style="text-align: right;">
+            <button onclick="rechargeWallet()" style="background: #ff9800; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;">➕ Recharge</button>
+            <button onclick="openHistory()" style="background: #17a2b8; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">🕒 Order History</button>
+        </div>
+    </div>
+
+    <div class="menu-grid" id="menuContainer">
+        <h2>Loading menu...</h2>
+    </div>
+    <div id="historyModal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="close-btn" onclick="closeHistory()">Close</button>
+            <h2 style="margin-top: 0;">Past 30 Days</h2>
+            <div id="historyContainer">
+                <p>Loading your orders...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- LOAD USER DATA ---
+        const loggedInId = localStorage.getItem('snuId');
+        const loggedInName = localStorage.getItem('studentName');
+        const loggedInBalance = localStorage.getItem('walletBalance');
+
+        // Security Check: If they didn't log in, kick them back to the login page!
+        if (!loggedInId) {
+            alert("Please log in first!");
+            window.location.href = 'index.html';
+        } else {
+            // Display their data on the screen
+            document.getElementById('studentNameDisplay').innerText = loggedInName;
+            document.getElementById('walletBalanceDisplay').innerText = parseFloat(loggedInBalance).toFixed(2);
+        }
+        let currentCart = [];
+        let cartTotal = 0;
+
+        // UPDATED: This function now reads the dropdown before fetching
+        async function fetchMenu() {
+            // 1. Find out which Dining Hall is currently selected in the dropdown
+            const selectedDhId = document.getElementById('dhSelect').value;
+            const selectedDhName = document.getElementById('dhSelect').options[document.getElementById('dhSelect').selectedIndex].text;
+
+            // 2. Update the page title to reflect the choice
+            document.getElementById('pageTitle').innerText = `🍽️ SNU Live Menu (${selectedDhName})`;
+            fetchCrowdStatus(selectedDhId);
+
+            const container = document.getElementById('menuContainer');
+            container.innerHTML = '<h3>Loading...</h3>'; // Show loading state while fetching
+
+            try {
+                // 3. Inject the selected ID right into the fetch URL!
+                const response = await fetch(`http://localhost:3000/api/menu/${selectedDhId}`);
+                const data = await response.json();
+
+                container.innerHTML = '';
+
+                if (data.success && data.menuItems.length > 0) {
+                    data.menuItems.forEach(item => {
+                        let badgeClass = item.Type === 'Veg' ? 'veg' : 'non-veg';
+                        const card = document.createElement('div');
+                        card.className = 'food-card';
+                        card.innerHTML = `
+                            <div>
+                                <h3>${item.Dish}</h3>
+                                <span class="badge ${badgeClass}">${item.Type}</span>
+                                <div style="font-size: 12px; color: #777;">Allergens: ${item.Allergens || 'None'}</div>
+                            </div>
+                            <div>
+                                <div class="price">₹${item['Price (₹)']}</div>
+                                <button class="add-btn" onclick="addToCart('${item.Dish}', ${item['Price (₹)']})">Add to Order</button>
+                            </div>
+                        `;
+                        container.appendChild(card);
+                    });
+                } else {
+                    container.innerHTML = `<h3>No active meals are being served at ${selectedDhName} right now.</h3>`;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                container.innerHTML = '<h3 style="color:red;">Failed to connect to the database.</h3>';
+            }
+        }
+
+        function addToCart(dishName, price) {
+            currentCart.push({ dish: dishName, price: price });
+            cartTotal += parseFloat(price);
+            document.getElementById('cartCount').innerText = currentCart.length;
+            document.getElementById('cartTotal').innerText = cartTotal.toFixed(2);
+        }
+
+        // Fetch the menu for whatever is selected by default when the page first loads
+        fetchMenu();
+    // --- PROCESS THE CHECKOUT ---
+        async function processCheckout() {
+            if (currentCart.length === 0) {
+                return alert("Your cart is empty! Add some food first.");
+            }
+
+            // 1. Group the cart items (e.g., if they clicked "Burger" 3 times, make it quantity: 3)
+            const groupedCart = {};
+            currentCart.forEach(item => {
+                if (groupedCart[item.dish]) {
+                    groupedCart[item.dish] += 1;
+                } else {
+                    groupedCart[item.dish] = 1;
+                }
+            });
+
+            // Convert the grouped object into an array for the backend
+            const cartItems = Object.keys(groupedCart).map(dishName => {
+                return { dish: dishName, quantity: groupedCart[dishName] };
+            });
+
+            const customerId = localStorage.getItem('snuId');
+            const dhId = document.getElementById('dhSelect').value;
+
+            try {
+                // 2. Send the cart to your Node.js backend!
+                const response = await fetch('http://localhost:3000/api/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ customerId: customerId, dhId: dhId, cartItems: cartItems })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    // 🎉 SUCCESS!
+                    alert(`✅ ${data.message}\nYour new balance is: ₹${data.newBalance}`);
+
+                    // Update the screen and local storage with the new balance
+                    localStorage.setItem('walletBalance', data.newBalance);
+                    document.getElementById('walletBalanceDisplay').innerText = parseFloat(data.newBalance).toFixed(2);
+
+                    // Empty the cart on the screen
+                    currentCart = [];
+                    cartTotal = 0;
+                    document.getElementById('cartCount').innerText = '0';
+                    document.getElementById('cartTotal').innerText = '0.00';
+                } else {
+                    // ❌ FAILURE (e.g., Not enough money!)
+                    alert(`❌ Checkout Failed: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert("An error occurred trying to reach the server.");
+            }
+        }
+    // --- ORDER HISTORY LOGIC ---
+        function closeHistory() {
+            document.getElementById('historyModal').style.display = 'none';
+        }
+
+        async function openHistory() {
+            // Show the pop-up
+            document.getElementById('historyModal').style.display = 'flex';
+            const container = document.getElementById('historyContainer');
+            container.innerHTML = '<p>Loading your orders...</p>';
+
+            const customerId = localStorage.getItem('snuId');
+
+            try {
+                const response = await fetch(`http://localhost:3000/api/history/${customerId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    if (data.history.length === 0) {
+                        container.innerHTML = '<p>No orders placed in the last 30 days.</p>';
+                        return;
+                    }
+
+                    container.innerHTML = ''; // Clear loading text
+
+                    // Loop through the history and build the UI cards
+                    data.history.forEach(order => {
+                        // Format the ugly MySQL date into a clean local date
+                        const cleanDate = new Date(order.transaction_date).toLocaleDateString();
+
+                        const card = document.createElement('div');
+                        card.className = 'history-card';
+                        card.innerHTML = `
+                            <div class="history-date">${cleanDate} • ${order.dh_name}</div>
+                            <div class="history-items">${order.ordered_items}</div>
+                            <div class="history-total">Spent: ₹${order.total_amount}</div>
+                        `;
+                        container.appendChild(card);
+                    });
+                } else {
+                    container.innerHTML = '<p style="color:red;">Failed to load history.</p>';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                container.innerHTML = '<p style="color:red;">Cannot connect to server.</p>';
+            }
+        }
+    // --- RECHARGE WALLET LOGIC ---
+        async function rechargeWallet() {
+            // Ask the user how much they want to add
+            const inputAmount = prompt("Enter the amount you want to add to your wallet (₹):", "500");
+
+            // If they click "Cancel" or leave it blank, do nothing
+            if (!inputAmount) return;
+
+            const amount = parseFloat(inputAmount);
+            if (isNaN(amount) || amount <= 0) {
+                return alert("Please enter a valid amount greater than 0.");
+            }
+
+            const customerId = localStorage.getItem('snuId');
+
+            try {
+                // Send the request to your backend
+                const response = await fetch('http://localhost:3000/api/recharge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ customerId: customerId, amount: amount })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    alert(data.message);
+
+                    // Instantly update the UI and localStorage with the new balance
+                    localStorage.setItem('walletBalance', data.newBalance);
+                    document.getElementById('walletBalanceDisplay').innerText = parseFloat(data.newBalance).toFixed(2);
+                } else {
+                    alert(`❌ Failed to recharge: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert("An error occurred trying to reach the server.");
+            }
+        }
+    // --- CROWD TRACKER LOGIC ---
+        async function fetchCrowdStatus(dhId) {
+            const badge = document.getElementById('crowdBadge');
+            badge.innerText = '⚪ Calculating Traffic...';
+            badge.style.backgroundColor = '#e9ecef';
+            badge.style.color = '#333';
+
+            try {
+                const response = await fetch(`http://localhost:3000/api/crowd/${dhId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    // Update the badge with the live status and exact order count
+                    badge.innerText = `${data.statusText} (${data.count} recent orders)`;
+                    badge.style.backgroundColor = data.badgeColor;
+                    badge.style.color = data.textColor;
+                }
+            } catch (error) {
+                console.error('Error fetching crowd status:', error);
+                badge.innerText = '⚪ Tracker Offline';
+            }
+        }
+    // --- CLEAR CART LOGIC ---
+        async function clearCart() {
+            // 1. If the cart is already empty, do nothing
+            if (currentCart.length === 0) {
+                return alert("Your cart is already empty.");
+            }
+
+            // 2. Ask for confirmation so they don't accidentally click it
+            const confirmClear = confirm("Are you sure you want to clear your entire order?");
+            if (!confirmClear) return;
+
+            // 3. Reset the frontend UI instantly for a snappy user experience
+            currentCart = [];
+            cartTotal = 0;
+            document.getElementById('cartCount').innerText = '0';
+            document.getElementById('cartTotal').innerText = '0.00';
+
+            // 4. Tell the backend to run the SQL stored procedure
+            const customerId = localStorage.getItem('snuId');
+            try {
+                await fetch(`http://localhost:3000/api/cart/clear/${customerId}`, {
+                    method: 'DELETE'
+                });
+                console.log("Database cart synced and cleared.");
+            } catch (error) {
+                console.error("Failed to clear database cart:", error);
+            }
+        }
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campus Dining Portal - Login</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-container { background-color: #ffffff; padding: 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); width: 100%; max-width: 350px; text-align: center; }
+        .login-container h2 { margin-bottom: 5px; color: #333; }
+        .login-container p { color: #777; font-size: 14px; margin-bottom: 25px; }
+        .form-group { margin-bottom: 20px; text-align: left; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: bold; color: #555; font-size: 14px; }
+        .form-group input { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; padding: 12px; background-color: #0056b3; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        button:hover { background-color: #004494; }
+        #errorMessage { color: #d9534f; margin-top: 15px; font-size: 14px; display: none; }
+        #successMessage { color: #5cb85c; margin-top: 15px; font-size: 14px; display: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="login-container">
+        <h2>Dining Portal</h2>
+        <p>Login to manage your wallet & orders</p>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="snuId">SNU ID (Username)</label>
+                <input type="text" id="snuId" placeholder="e.g., 1001" required autocomplete="off">
+            </div>
+
+            <div class="form-group">
+                <label for="dobYear">DOB Year (Password)</label>
+                <input type="password" id="dobYear" placeholder="e.g., 2004" required>
+            </div>
+
+            <button type="submit">Sign In</button>
+            <div id="errorMessage">Invalid SNU ID or DOB Year.</div>
+            <div id="successMessage"></div>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(event) {
+            event.preventDefault(); // Stop page reload
+
+            const snuId = document.getElementById('snuId').value;
+            const dobYear = document.getElementById('dobYear').value;
+            const errorDiv = document.getElementById('errorMessage');
+            const successDiv = document.getElementById('successMessage');
+
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+
+            try {
+                // 1. Send the data to your Node.js Backend
+                const response = await fetch('http://localhost:3000/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ snuId: snuId, dobYear: dobYear })
+                });
+
+                // 2. Parse the response from the server
+                const data = await response.json();
+
+                // 3. Handle Success or Failure
+                if (response.ok && data.success) {
+                    // SAVE the data to the browser's memory
+                    localStorage.setItem('snuId', snuId);
+                    localStorage.setItem('studentName', data.name);
+                    localStorage.setItem('walletBalance', data.balance);
+
+                    // Redirect the user straight to the menu page!
+                    window.location.href = 'menu.html';
+                } else {
+                    errorDiv.innerText = data.message;
+                    errorDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                errorDiv.innerText = "Cannot connect to server. Is Node.js running?";
+                errorDiv.style.display = 'block';
+            }
+        });
+    </script>
+
+</body>
+</html>
